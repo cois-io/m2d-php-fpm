@@ -2,6 +2,9 @@ FROM php:7.0.7-fpm
 
 MAINTAINER Francois Raubenheimer <cois.io>
 
+# I go in this guy often so lets make sure it works
+ENV TERM=xterm
+
 RUN apt-get update \
   && apt-get install -y \
     libfreetype6-dev \
@@ -9,13 +12,35 @@ RUN apt-get update \
     libjpeg62-turbo-dev \
     libmcrypt-dev \
     libpng12-dev \
-    libxslt1-dev
+    libxslt1-dev \ 
+    git
 
 RUN docker-php-ext-configure \
         gd --with-freetype-dir=/usr/include/ --with-jpeg-dir=/usr/include/
 
+
+RUN docker-php-ext-install \
+        gd \
+        intl \
+        mbstring \
+        mcrypt \
+        pdo_mysql \
+        xsl \
+        zip
+
 COPY docker-php-pecl-install /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-php-pecl-install
+
+# Install redis with git will move to pecl soon
+RUN git clone https://github.com/phpredis/phpredis.git /tmp/phpredis \
+        && cd /tmp/phpredis \
+        && git checkout php7 \
+        && phpize \
+        && ./configure \
+        && make && make install \
+        && rm -rf /tmp/phpredis
+
+RUN docker-php-ext-enable redis
 
 ENV XDEBUG_VERSION 2.4.0
 RUN docker-php-pecl-install xdebug-$XDEBUG_VERSION && \
@@ -26,26 +51,7 @@ RUN docker-php-pecl-install xdebug-$XDEBUG_VERSION && \
 
 RUN docker-php-ext-enable xdebug
 
-ENV PHPREDIS_VERSION php7
-RUN curl -L -o /tmp/redis.tar.gz https://github.com/phpredis/phpredis/archive/$PHPREDIS_VERSION.tar.gz \
-        && tar xfz /tmp/redis.tar.gz \
-        && rm -r /tmp/redis.tar.gz \
-        && mv phpredis-$PHPREDIS_VERSION /usr/src/php/ext/redis
-
-RUN docker-php-ext-install \
-        gd \
-        intl \
-        mbstring \
-        mcrypt \
-        pdo_mysql \
-        xsl \
-        zip \
-        redis
-
-RUN { \
-    echo 'session.save_handler = redis'; \
-    echo 'session.save_path = tcp://redis-cache:6379'; \
-} >> /usr/local/etc/php/conf.d/docker-php-ext-redis.ini
+COPY php.ini /usr/local/etc/php/
 
 WORKDIR /www
 
